@@ -579,8 +579,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.effective_message:
             await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again.", parse_mode='HTML')
 
-# Main function to run the bot (synchronous, to avoid event loop conflicts)
-def main():
+# Main function to run the bot (now asynchronous)
+async def main():
     # Build the application with a global timeout for API requests
     application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()  # Set global timeout to 30 seconds
 
@@ -592,14 +592,14 @@ def main():
     for attempt in range(max_retries):
         try:
             # Check current webhook status
-            webhook_info = application.bot.get_webhook_info()  # Removed invalid timeout parameter
+            webhook_info = await application.bot.get_webhook_info()  # Now awaited
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                application.bot.delete_webhook(drop_pending_updates=True)  # Removed invalid timeout parameter
+                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = application.bot.get_webhook_info()  # Removed invalid timeout parameter
+                webhook_info = await application.bot.get_webhook_info()  # Now awaited
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if webhook_info.url:
                     logger.error("Webhook still exists after deletion attempt.")
@@ -609,7 +609,7 @@ def main():
             logger.error(f"Failed to delete webhook (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt == max_retries - 1:
                 logger.warning("Failed to delete webhook after maximum retries. Proceeding with polling anyway.")
-                # Instead of exiting, proceed with polling
+                # Proceed with polling instead of exiting
                 break
             time.sleep(5)  # Wait 5 seconds before retrying
 
@@ -633,8 +633,8 @@ def main():
 
     logger.info("Bot is starting...")
     try:
-        # Run polling directly, letting Application manage the event loop
-        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        # Run polling, now awaited
+        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
         logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
@@ -644,4 +644,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    main()  # Run the synchronous main function directly
+    # Run the asynchronous main function
+    asyncio.run(main())directly
