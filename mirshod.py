@@ -664,8 +664,8 @@ def manually_delete_webhook(token):
         logger.error(f"Error manually deleting webhook: {e}")
         return False
 
-# Main function to run the bot (synchronous, letting Application manage the event loop)
-def main():
+# Main function to run the bot (now asynchronous)
+async def main():
     # Validate the bot token before proceeding
     if not validate_bot_token(BOT_TOKEN):
         logger.critical("Invalid or revoked bot token. Please check your TELEGRAM_BOT_TOKEN in the .env file. Exiting.")
@@ -683,14 +683,14 @@ def main():
     for attempt in range(max_retries):
         try:
             # Check current webhook status
-            webhook_info = application.bot.get_webhook_info()
+            webhook_info = await application.bot.get_webhook_info()  # Now awaited
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                application.bot.delete_webhook(drop_pending_updates=True)
+                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = application.bot.get_webhook_info()
+                webhook_info = await application.bot.get_webhook_info()  # Now awaited
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if not webhook_info.url:
                     webhook_deleted = True
@@ -733,8 +733,8 @@ def main():
 
     logger.info("Bot is starting...")
     try:
-        # Let Application manage the event loop with run_polling
-        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        # Run polling, now awaited
+        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
         logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running or a webhook is set.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
@@ -744,4 +744,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    main()  # Run the synchronous main function
+    # Run the asynchronous main function
+    asyncio.run(main())
