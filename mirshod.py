@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAEEGcts8t-FV2rkFHjX140PykViPF1fLpA")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAG5d5UKwhvyFJ_EMBLKdT8J2OZb14xU78Q")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
@@ -580,7 +580,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again.", parse_mode='HTML')
 
 # Main function to run the bot
-def main():
+# Main function to run the bot (now async)
+async def main():
     # Build the application
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -592,14 +593,14 @@ def main():
     for attempt in range(max_retries):
         try:
             # Check current webhook status
-            webhook_info = application.bot.get_webhook_info()
+            webhook_info = await application.bot.get_webhook_info()  # Now awaited
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                application.bot.delete_webhook(drop_pending_updates=True)
+                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = application.bot.get_webhook_info()
+                webhook_info = await application.bot.get_webhook_info()  # Now awaited
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if webhook_info.url:
                     logger.error("Webhook still exists after deletion attempt.")
@@ -631,7 +632,7 @@ def main():
 
     logger.info("Bot is starting...")
     try:
-        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)  # Now awaited
     except Conflict as e:
         logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
@@ -641,4 +642,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())  # Run the async main function
