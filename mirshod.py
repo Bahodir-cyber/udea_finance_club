@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAHHpP3saJ4O9jfW7Xr2GkQSxtOTMEPj8Z0")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAEGZy3hjknZNhMk79D4ntsjKtzpa3q_KRE")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
@@ -581,8 +581,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Main function to run the bot (synchronous, to avoid event loop conflicts)
 def main():
-    # Build the application
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Build the application with a global timeout for API requests
+    application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()  # Set global timeout to 30 seconds
 
     # Add an error handler
     application.add_error_handler(error_handler)
@@ -591,15 +591,15 @@ def main():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Check current webhook status with a longer timeout
-            webhook_info = application.bot.get_webhook_info(timeout=30)  # Increased timeout to 30 seconds
+            # Check current webhook status
+            webhook_info = application.bot.get_webhook_info()  # Removed invalid timeout parameter
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                application.bot.delete_webhook(drop_pending_updates=True, timeout=30)  # Increased timeout to 30 seconds
+                application.bot.delete_webhook(drop_pending_updates=True)  # Removed invalid timeout parameter
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = application.bot.get_webhook_info(timeout=30)  # Increased timeout to 30 seconds
+                webhook_info = application.bot.get_webhook_info()  # Removed invalid timeout parameter
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if webhook_info.url:
                     logger.error("Webhook still exists after deletion attempt.")
@@ -608,9 +608,10 @@ def main():
         except TelegramError as e:
             logger.error(f"Failed to delete webhook (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt == max_retries - 1:
-                logger.critical("Failed to delete webhook after maximum retries. Exiting.")
-                exit(1)
-            time.sleep(5)  # Increased wait time to 5 seconds before retrying
+                logger.warning("Failed to delete webhook after maximum retries. Proceeding with polling anyway.")
+                # Instead of exiting, proceed with polling
+                break
+            time.sleep(5)  # Wait 5 seconds before retrying
 
     # Add conversation handler for currency conversion with per_message=True
     conv_handler = ConversationHandler(
@@ -621,7 +622,7 @@ def main():
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount)],
         },
         fallbacks=[],
-        per_message=True,  # Added to address PTBUserWarning
+        per_message=True,  # Ensures callback queries are tracked per message
     )
 
     # Add handlers
