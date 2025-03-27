@@ -17,6 +17,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 from telegram.error import TelegramError
+import html
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,7 +27,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = ("7684629360:AAEGZy3hjknZNhMk79D4ntsjKtzpa3q_KRE")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAEGZy3hjknZNhMk79D4ntsjKtzpa3q_KRE")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
@@ -72,7 +73,6 @@ MARKET_PRICES_KEYBOARD = InlineKeyboardMarkup([
 # Function to create a currency selection keyboard
 def get_currency_keyboard(callback_prefix):
     buttons = [InlineKeyboardButton(text=cur, callback_data=f"{callback_prefix}_{cur}") for cur in CURRENCIES]
-    # Structure buttons into rows of 4
     keyboard = []
     for i in range(0, len(buttons), 4):
         row = buttons[i:i + 4]
@@ -81,6 +81,10 @@ def get_currency_keyboard(callback_prefix):
 
 # States for the currency conversion conversation
 FROM_CURRENCY, TO_CURRENCY, AMOUNT = range(3)
+
+# Utility function to escape HTML special characters
+def escape_html(text):
+    return html.escape(str(text))
 
 # Function to initialize the database with error handling
 def initialize_database():
@@ -133,7 +137,6 @@ def get_uzs_exchange_rates():
 # Function to fetch exchange rate between two currencies
 def get_exchange_rate(from_currency, to_currency):
     try:
-        # Fetch rates with the "from" currency as the base
         response = requests.get(f"https://v6.exchangerate-api.com/v6/{EXCHANGE_RATE_API_KEY}/latest/{from_currency}", timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -163,7 +166,6 @@ def get_exchange_rate(from_currency, to_currency):
 # Function to fetch S&P 500 stock prices using Alpha Vantage
 def get_sp500_stock_prices():
     try:
-        # List of top S&P 500 companies to fetch
         symbols = ["AAPL", "MSFT", "AMZN", "TSLA", "GOOGL", "META", "NVDA", "BRK.B", "JNJ", "JPM"]
         prices = []
         
@@ -185,7 +187,6 @@ def get_sp500_stock_prices():
                 prices.append((symbol, "N/A"))
             time.sleep(12)  # Alpha Vantage free tier: 5 requests per minute
 
-        # Fetch S&P 500 Index (using SPY ETF as a proxy)
         params = {
             "function": "TIME_SERIES_DAILY",
             "symbol": "SPY",
@@ -196,17 +197,16 @@ def get_sp500_stock_prices():
         data = response.json()
         if "Time Series (Daily)" in data:
             latest_date = list(data["Time Series (Daily)"].keys())[0]
-            sp500_index = float(data["Time Series (Daily)"][latest_date]["4. close"]) * 10  # Approximate index value
+            sp500_index = float(data["Time Series (Daily)"][latest_date]["4. close"]) * 10
         else:
             sp500_index = "N/A"
 
-        # Format the response
-        message = "S&P 500 Stock Prices 📈\n"
+        message = "<b>S&P 500 Stock Prices 📈</b>\n"
         for symbol, price in prices:
             price_str = f"${price:.2f}" if isinstance(price, float) else price
-            message += f"{symbol}: {price_str}\n"
+            message += f"{escape_html(symbol)}: {escape_html(price_str)}\n"
         sp500_str = f"{sp500_index:.2f}" if isinstance(sp500_index, float) else sp500_index
-        message += f"S&P 500 Index: {sp500_str}\n"
+        message += f"<b>S&P 500 Index:</b> {escape_html(sp500_str)}\n"
         return message
     except requests.Timeout:
         logger.error("Alpha Vantage API request timed out.")
@@ -232,11 +232,11 @@ def get_crypto_prices():
         response.raise_for_status()
         data = response.json()
         if isinstance(data, list):
-            message = "Crypto Market 🚀\n"
+            message = "<b>Crypto Market 🚀</b>\n"
             for coin in data:
                 name = coin["symbol"].upper()
                 price = coin["current_price"]
-                message += f"{name}: ${price:,.2f}\n"
+                message += f"{escape_html(name)}: ${price:,.2f}\n"
             return message
         else:
             logger.error("Invalid response from CoinGecko API.")
@@ -254,11 +254,8 @@ def get_crypto_prices():
 # Function to fetch Commodity Market prices using Alpha Vantage
 def get_commodity_prices():
     try:
-        # Reduced list to 1 commodity for testing to avoid rate limits
         commodities = [
             ("GOLD", "Gold (XAU/USD)"),
-            # ("XAGUSD", "Silver (XAG/USD)"),  # Corrected symbol for Silver, but commented out for now
-            # ("WTI", "Crude Oil (WTI)"),
         ]
         prices = []
         
@@ -282,7 +279,7 @@ def get_commodity_prices():
                     error_message = data.get('Note', 'Unknown error')
                     logger.warning(f"Could not fetch data for {name} ({symbol}): {error_message}")
                     prices.append((name, "N/A"))
-                time.sleep(12)  # Alpha Vantage free tier: 5 requests per minute
+                time.sleep(12)
             except requests.Timeout:
                 logger.error(f"API request timed out for {name} ({symbol})")
                 prices.append((name, "N/A"))
@@ -296,22 +293,19 @@ def get_commodity_prices():
                 prices.append((name, "N/A"))
                 continue
 
-        # Format the response
-        message = "Commodity Market ⛏️\n"
+        message = "<b>Commodity Market ⛏️</b>\n"
         for name, price in prices:
             price_str = f"${price:,.2f}" if isinstance(price, float) else price
-            message += f"{name}: {price_str}\n"
+            message += f"{escape_html(name)}: {escape_html(price_str)}\n"
         logger.info("Commodity prices fetched successfully.")
         return message
     except Exception as e:
         logger.error(f"Unexpected error in get_commodity_prices: {e}")
         return "❌ Unexpected error while fetching commodity prices."
 
-
 # Function to fetch Currency Market prices using ExchangeRate-API
 def get_currency_prices():
     try:
-        # Base currency USD for currency pairs
         response = requests.get(f"https://v6.exchangerate-api.com/v6/{EXCHANGE_RATE_API_KEY}/latest/USD", timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -321,7 +315,6 @@ def get_currency_prices():
                 logger.error("No currency rate data found in response.")
                 return "❌ Unable to fetch currency prices."
             
-            # Define currency pairs
             pairs = [
                 ("USD/EUR", "EUR"),
                 ("GBP/USD", "GBP"),
@@ -335,25 +328,25 @@ def get_currency_prices():
                 ("GBP/JPY", "GBP", "JPY")
             ]
             
-            message = "Currency Market 💱\n"
+            message = "<b>Currency Market 💱</b>\n"
             for pair in pairs:
-                if len(pair) == 2:  # Direct pairs (e.g., USD/EUR)
+                if len(pair) == 2:
                     base, target = "USD", pair[1]
                     rate = rates.get(target, "N/A")
                     if rate != "N/A":
                         rate = 1 / rate if base == "USD" else rate
-                        message += f"{pair[0]}: {rate:.2f}\n"
+                        message += f"{escape_html(pair[0])}: {rate:.2f}\n"
                     else:
-                        message += f"{pair[0]}: N/A\n"
-                else:  # Cross pairs (e.g., EUR/GBP)
+                        message += f"{escape_html(pair[0])}: N/A\n"
+                else:
                     base, target = pair[1], pair[2]
                     base_to_usd = rates.get(base, "N/A")
                     target_to_usd = rates.get(target, "N/A")
                     if base_to_usd != "N/A" and target_to_usd != "N/A":
                         rate = (1 / base_to_usd) * target_to_usd
-                        message += f"{pair[0]}: {rate:.2f}\n"
+                        message += f"{escape_html(pair[0])}: {rate:.2f}\n"
                     else:
-                        message += f"{pair[0]}: N/A\n"
+                        message += f"{escape_html(pair[0])}: N/A\n"
             return message
         else:
             logger.error(f"API response unsuccessful: {data.get('error-type', 'Unknown error')}")
@@ -373,11 +366,9 @@ async def fetch_market_data(category):
     now = datetime.utcnow()
     cache_entry = market_data_cache[category]
     
-    # Check if data is in cache and not expired
     if cache_entry["data"] and cache_entry["last_updated"] and (now - cache_entry["last_updated"]) < CACHE_DURATION:
         return cache_entry["data"]
 
-    # Fetch new data
     if category == "sp500":
         data = get_sp500_stock_prices()
     elif category == "crypto":
@@ -391,7 +382,6 @@ async def fetch_market_data(category):
     else:
         data = "❌ Invalid category."
 
-    # Update cache
     market_data_cache[category]["data"] = data
     market_data_cache[category]["last_updated"] = now
     return data
@@ -399,11 +389,11 @@ async def fetch_market_data(category):
 # Function to show the main menu with inline buttons
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, is_start=False):
     try:
-        menu_text = "🎉 Welcome to the bot! Please select an option below:" if is_start else "Please select an option below:"
+        menu_text = "<b>🎉 Welcome to the bot! Please select an option below:</b>" if is_start else "<b>Please select an option below:</b>"
         if update.callback_query:
-            await update.callback_query.message.edit_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='Markdown')
+            await update.callback_query.message.edit_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
         else:
-            await update.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='Markdown')
+            await update.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
         logger.info("Main menu displayed successfully.")
     except TelegramError as e:
         logger.error(f"Telegram error while showing main menu: {e}")
@@ -417,11 +407,11 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, is_
 # Function to show the Market Prices submenu with inline buttons
 async def show_market_prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        menu_text = "📊 Market Prices\nPlease select a market data option below:"
+        menu_text = "<b>📊 Market Prices</b>\nPlease select a market data option below:"
         if update.callback_query:
-            await update.callback_query.message.edit_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='Markdown')
+            await update.callback_query.message.edit_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
         else:
-            await update.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='Markdown')
+            await update.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
         logger.info("Market Prices menu displayed successfully.")
     except TelegramError as e:
         logger.error(f"Telegram error while showing Market Prices menu: {e}")
@@ -444,14 +434,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.info(f"User {user_id} is not a member of the channel, prompting to join")
             welcome_text = (
-                "🚀 Welcome!\n\n"
+                "<b>🚀 Welcome!</b>\n\n"
                 "Hello! 🎉 To fully use this bot, you need to join our official channel first. 📢\n\n"
-                "🔒 Why is this required?\n"
+                "<b>🔒 Why is this required?</b>\n"
                 "We provide you with real-time financial data, market news, and currency tools for free! "
                 "By joining the channel, you support the bot and stay updated with important news.\n\n"
-                "👉 Join here: [UDEA Finance Club](https://t.me/UDEA_Finance_Club)"
+                "👉 Join here: <a href='https://t.me/UDEA_Finance_Club'>UDEA Finance Club</a>"
             )
-            await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            await update.message.reply_text(welcome_text, parse_mode='HTML')
         logger.info(f"User {user_id} started the bot.")
     except TelegramError as e:
         logger.error(f"Telegram error while checking subscription for user {user_id}: {e}")
@@ -495,7 +485,6 @@ async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from_currency = context.user_data.get("from_currency")
         to_currency = context.user_data.get("to_currency")
 
-        # Fetch the exchange rate
         rate = get_exchange_rate(from_currency, to_currency)
         if rate:
             converted_amount = round(amount * rate, 2)
@@ -503,7 +492,6 @@ async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ Error fetching exchange rate.")
 
-        # Clear user data and return to main menu
         context.user_data.clear()
         await show_main_menu(update, context)
         return ConversationHandler.END
@@ -526,51 +514,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if callback_data == "about_bot":
             about_text = (
-                "**ℹ About the Bot**\\n\\n"
+                "<b>ℹ About the Bot</b>\n\n"
                 "This bot is a project by UDEA Finance Club, designed to help students and finance enthusiasts stay informed about market trends, "
-                "currency rates, and financial news\\. 📊💰\\n\\n"
-                "The project is led by Mirshod Yaxshiyev, who founded this club to promote financial literacy and provide practical experience to students\\.\\n\\n"
-                "The bot delivers real-time data on stocks, cryptocurrencies, commodity markets, and currency rates\\. It also keeps you updated with the most important economic and business news\\.\\n\\n"
-                "Explore the world of finance and make informed decisions\\! 🚀"
+                "currency rates, and financial news. 📊💰\n\n"
+                "The project is led by Mirshod Yaxshiyev, who founded this club to promote financial literacy and provide practical experience to students.\n\n"
+                "The bot delivers real-time data on stocks, cryptocurrencies, commodity markets, and currency rates. It also keeps you updated with the most important economic and business news.\n\n"
+                "Explore the world of finance and make informed decisions! 🚀"
             )
-            try:
-                await query.message.edit_text(about_text, parse_mode='MarkdownV2')
-                logger.info("About bot message displayed successfully.")
-            except TelegramError as e:
-                logger.error(f"Failed to display about bot message with MarkdownV2: {e}")
-                about_text_fallback = (
-                    "ℹ About the Bot\n\n"
-                    "This bot is a project by UDEA Finance Club, designed to help students and finance enthusiasts stay informed about market trends, "
-                    "currency rates, and financial news. 📊💰\n\n"
-                    "The project is led by Mirshod Yaxshiyev, who founded this club to promote financial literacy and provide practical experience to students.\n\n"
-                    "The bot delivers real-time data on stocks, cryptocurrencies, commodity markets, and currency rates. It also keeps you updated with the most important economic and business news.\n\n"
-                    "Explore the world of finance and make informed decisions! 🚀"
-                )
-                await query.message.edit_text(about_text_fallback, parse_mode=None)
-                logger.info("About bot message displayed as plain text (fallback).")
+            await query.message.edit_text(about_text, parse_mode='HTML')
+            logger.info("About bot message displayed successfully.")
             await show_main_menu(update, context)
 
         elif callback_data == "admin_contact":
             admin_text = (
-                "Admin Contact 👤\\n\\n"
-                "Hey there\\! This is the admin of UDEA Finance Club\\. If you have any questions about the bot, need assistance, "
-                "or want to learn more about finance, feel free to reach out\\!\\n\\n"
-                "📩 Contact: @mirshodbek_yakhshiyev\\n"
+                "<b>Admin Contact 👤</b>\n\n"
+                "Hey there! This is the admin of UDEA Finance Club. If you have any questions about the bot, need assistance, "
+                "or want to learn more about finance, feel free to reach out!\n\n"
+                "📩 Contact: <a href='https://t.me/mirshodbek_yakhshiyev'>@mirshodbek_yakhshiyev</a>\n"
             )
-            try:
-                await query.message.edit_text(admin_text, parse_mode='MarkdownV2')
-                logger.info("Admin contact message displayed successfully with MarkdownV2.")
-            except TelegramError as e:
-                logger.error(f"Failed to display admin contact message with MarkdownV2: {e}")
-                # Fallback to plain text if Markdown parsing fails
-                admin_text_fallback = (
-                    "Admin Contact 👤\n\n"
-                    "Hey there! This is the admin of UDEA Finance Club. If you have any questions about the bot, need assistance, "
-                    "or want to learn more about finance, feel free to reach out!\n\n"
-                    "📩 Contact: @mirshodbek_yakhshiyev\n"
-                )
-                await query.message.edit_text(admin_text_fallback, parse_mode=None)
-                logger.info("Admin contact message displayed as plain text (fallback).")
+            await query.message.edit_text(admin_text, parse_mode='HTML')
+            logger.info("Admin contact message displayed successfully.")
             await show_main_menu(update, context)
 
         elif callback_data == "market_prices":
@@ -579,28 +542,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif callback_data == "uzs_comparison":
             rates = await fetch_market_data("uzs_rates")
             if rates:
-                message = "🇺🇿 **UZS Exchange Rates:**\\n\\n"
+                message = "<b>🇺🇿 UZS Exchange Rates:</b>\n\n"
                 for currency, rate in rates.items():
                     if rate != "N/A":
-                        message += f"1 {currency} = {round(1 / rate, 2)} UZS\\n"
+                        message += f"1 {escape_html(currency)} = {round(1 / rate, 2)} UZS\n"
                     else:
-                        message += f"1 {currency} = N/A\\n"
-                # Check if the new message content is different
+                        message += f"1 {escape_html(currency)} = N/A\n"
                 current_text = query.message.text or ""
                 if current_text != message:
-                    try:
-                        await query.message.edit_text(message, parse_mode="MarkdownV2")
-                        logger.info("UZS exchange rates message updated successfully.")
-                    except TelegramError as e:
-                        logger.error(f"Failed to display UZS exchange rates with MarkdownV2: {e}")
-                        message_fallback = "🇺🇿 UZS Exchange Rates:\n\n"
-                        for currency, rate in rates.items():
-                            if rate != "N/A":
-                                message_fallback += f"1 {currency} = {round(1 / rate, 2)} UZS\n"
-                            else:
-                                message_fallback += f"1 {currency} = N/A\n"
-                        await query.message.edit_text(message_fallback, parse_mode=None)
-                        logger.info("UZS exchange rates message displayed as plain text (fallback).")
+                    await query.message.edit_text(message, parse_mode="HTML")
+                    logger.info("UZS exchange rates message updated successfully.")
                 else:
                     logger.info("Skipping edit: UZS exchange rates message content unchanged.")
             else:
@@ -611,11 +562,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info("Fetching S&P 500 stock prices...")
             data = await fetch_market_data("sp500")
             logger.info(f"S&P 500 data fetched: {data}")
-            new_message = data + "\n⚡ Real-time data updates automatically using API!"
-            # Check if the new message content is different
+            new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
             current_text = query.message.text or ""
             if current_text != new_message:
-                await query.message.edit_text(new_message, parse_mode='Markdown')
+                await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("S&P 500 message updated successfully.")
             else:
                 logger.info("Skipping edit: S&P 500 message content unchanged.")
@@ -625,11 +575,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info("Fetching Crypto Market prices...")
             data = await fetch_market_data("crypto")
             logger.info(f"Crypto Market data fetched: {data}")
-            new_message = data + "\n⚡ Real-time data updates automatically using API!"
-            # Check if the new message content is different
+            new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
             current_text = query.message.text or ""
             if current_text != new_message:
-                await query.message.edit_text(new_message, parse_mode='Markdown')
+                await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("Crypto Market message updated successfully.")
             else:
                 logger.info("Skipping edit: Crypto Market message content unchanged.")
@@ -638,31 +587,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif callback_data == "market_commodity":
             logger.info("Fetching Commodity Market prices...")
             try:
-                # Add a 30-second timeout for fetching commodity prices
                 data = await asyncio.wait_for(fetch_market_data("commodity"), timeout=30)
                 logger.info(f"Commodity Market data fetched: {data}")
-                new_message = data + "\n⚡ Real-time data updates automatically using API!"
-                # Check if the new message content is different
+                new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
                 current_text = query.message.text or ""
                 if current_text != new_message:
-                    await query.message.edit_text(new_message, parse_mode='Markdown')
+                    await query.message.edit_text(new_message, parse_mode='HTML')
                     logger.info("Commodity Market message updated successfully.")
                 else:
                     logger.info("Skipping edit: Commodity Market message content unchanged.")
             except asyncio.TimeoutError:
                 logger.error("Fetching commodity prices timed out after 30 seconds.")
-                await query.message.edit_text("❌ Fetching commodity prices timed out. Please try again later.", parse_mode='Markdown')
+                await query.message.edit_text("❌ Fetching commodity prices timed out. Please try again later.")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_currency":
             logger.info("Fetching Currency Market prices...")
             data = await fetch_market_data("currency")
             logger.info(f"Currency Market data fetched: {data}")
-            new_message = data + "\n⚡ Real-time data updates automatically using API!"
-            # Check if the new message content is different
+            new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
             current_text = query.message.text or ""
             if current_text != new_message:
-                await query.message.edit_text(new_message, parse_mode='Markdown')
+                await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("Currency Market message updated successfully.")
             else:
                 logger.info("Skipping edit: Currency Market message content unchanged.")
@@ -705,7 +651,6 @@ def main():
 
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Conversation handler for currency conversion
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_currency_calculator, pattern="^currency_calculator$")],
         states={
@@ -716,7 +661,6 @@ def main():
         fallbacks=[],
     )
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(handle_callback))
