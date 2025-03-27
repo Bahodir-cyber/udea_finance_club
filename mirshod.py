@@ -40,7 +40,7 @@ ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 # List of currencies for UZS comparison and currency converter
-CURRENCIES = ["UZS", "USD", "GBP", "JPY", "EUR", "RUB", "QAR", "KZT"]
+CURRENCIES = ["UZS", "USD", "GBP", "JPY", "EUR", "RUB"]
 
 # Cache for market data with timestamps
 market_data_cache = {
