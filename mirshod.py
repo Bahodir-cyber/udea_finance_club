@@ -91,8 +91,22 @@ def get_currency_keyboard(callback_prefix):
         keyboard.append(row)
     return InlineKeyboardMarkup(keyboard)
 
+# Function to create an amount selection keyboard
+def get_amount_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("10", callback_data="amount_10"),
+            InlineKeyboardButton("50", callback_data="amount_50"),
+            InlineKeyboardButton("100", callback_data="amount_100"),
+        ],
+        [
+            InlineKeyboardButton("Custom", callback_data="amount_custom"),
+            InlineKeyboardButton("Cancel", callback_data="amount_cancel"),
+        ],
+    ])
+
 # States for the currency conversion conversation
-FROM_CURRENCY, TO_CURRENCY, AMOUNT = range(3)
+FROM_CURRENCY, TO_CURRENCY, AMOUNT, CUSTOM_AMOUNT = range(4)
 
 # Utility function to escape HTML special characters
 def escape_html(text):
@@ -409,36 +423,75 @@ async def select_to_currency(update: Update, context: ContextTypes.DEFAULT_TYPE)
     to_currency = query.data.split("_")[1]
     context.user_data["to_currency"] = to_currency
     logger.info(f"User selected 'to' currency: {to_currency}")
-    new_text = "💱 Enter the amount you want to convert:"
-    await query.message.reply_text(new_text, parse_mode='HTML')
-    logger.info("Updated to amount input as a new message.")
+    new_text = "💱 Select the amount to convert:"
+    await query.message.reply_text(new_text, reply_markup=get_amount_keyboard(), parse_mode='HTML')
+    logger.info("Updated to amount selection as a new message.")
     return AMOUNT
 
-# Handler for the amount input in the currency conversion process
-async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Handler for selecting the amount
+async def select_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+
+    if callback_data == "amount_cancel":
+        await query.message.reply_text("❌ Currency conversion cancelled.", parse_mode='HTML')
+        context.user_data.clear()
+        await show_main_menu(update, context)
+        return ConversationHandler.END
+
+    if callback_data == "amount_custom":
+        await query.message.reply_text("💱 Please enter the custom amount (e.g., 75.50):", parse_mode='HTML')
+        return CUSTOM_AMOUNT
+
+    # Extract the amount from the callback data (e.g., "amount_10" -> 10)
+    amount = float(callback_data.split("_")[1])
+    from_currency = context.user_data.get("from_currency")
+    to_currency = context.user_data.get("to_currency")
+
+    rate = get_exchange_rate(from_currency, to_currency)
+    if rate:
+        converted_amount = round(amount * rate, 2)
+        await query.message.reply_text(f"{amount} {from_currency} = {converted_amount} {to_currency} 💱", parse_mode='HTML')
+    else:
+        await query.message.reply_text("❌ Error fetching exchange rate.", parse_mode='HTML')
+
+    context.user_data.clear()
+    await show_main_menu(update, context)
+    return ConversationHandler.END
+
+# Handler for custom amount input
+async def handle_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+
+    if callback_data == "custom_cancel":
+        await query.message.reply_text("❌ Currency conversion cancelled.", parse_mode='HTML')
+        context.user_data.clear()
+        await show_main_menu(update, context)
+        return ConversationHandler.END
+
+    amount_str = callback_data.split("_")[1]
     try:
-        amount = float(update.message.text)
+        amount = float(amount_str)
         from_currency = context.user_data.get("from_currency")
         to_currency = context.user_data.get("to_currency")
 
         rate = get_exchange_rate(from_currency, to_currency)
         if rate:
             converted_amount = round(amount * rate, 2)
-            await update.message.reply_text(f"{amount} {from_currency} = {converted_amount} {to_currency} 💱", parse_mode='HTML')
+            await query.message.reply_text(f"{amount} {from_currency} = {converted_amount} {to_currency} 💱", parse_mode='HTML')
         else:
-            await update.message.reply_text("❌ Error fetching exchange rate.", parse_mode='HTML')
+            await query.message.reply_text("❌ Error fetching exchange rate.", parse_mode='HTML')
 
         context.user_data.clear()
         await show_main_menu(update, context)
         return ConversationHandler.END
 
     except ValueError:
-        await update.message.reply_text("Please enter a valid number.", parse_mode='HTML')
+        await query.message.reply_text("❌ Invalid amount. Please select an amount or enter a valid number.", parse_mode='HTML')
         return AMOUNT
-    except Exception as e:
-        logger.error(f"Unexpected error while converting currency: {e}")
-        await update.message.reply_text("❌ An error occurred while converting currency. Please try again.", parse_mode='HTML')
-        return ConversationHandler.END
 
 # Handler for inline button callbacks (excluding currency conversion)
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -579,39 +632,85 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.effective_message:
             await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again.", parse_mode='HTML')
 
-# Main function to run the bot (now asynchronous)
-async def main():
+# Function to validate the bot token by making a simple API call
+def validate_bot_token(token):
+    try:
+        response = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("ok"):
+            logger.info(f"Bot token validated successfully: {data['result']['username']}")
+            return True
+        else:
+            logger.error(f"Bot token validation failed: {data.get('description', 'Unknown error')}")
+            return False
+    except requests.RequestException as e:
+        logger.error(f"Error validating bot token: {e}")
+        return False
+
+# Function to manually delete the webhook using the Telegram API
+def manually_delete_webhook(token):
+    try:
+        response = requests.get(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=true", timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("ok"):
+            logger.info("Webhook manually deleted successfully via Telegram API.")
+            return True
+        else:
+            logger.error(f"Failed to manually delete webhook: {data.get('description', 'Unknown error')}")
+            return False
+    except requests.RequestException as e:
+        logger.error(f"Error manually deleting webhook: {e}")
+        return False
+
+# Main function to run the bot (synchronous, letting Application manage the event loop)
+def main():
+    # Validate the bot token before proceeding
+    if not validate_bot_token(BOT_TOKEN):
+        logger.critical("Invalid or revoked bot token. Please check your TELEGRAM_BOT_TOKEN in the .env file. Exiting.")
+        exit(1)
+
     # Build the application with a global timeout for API requests
-    application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()  # Set global timeout to 30 seconds
+    application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()
 
     # Add an error handler
     application.add_error_handler(error_handler)
 
     # Check and delete any existing webhook to ensure polling works
     max_retries = 3
+    webhook_deleted = False
     for attempt in range(max_retries):
         try:
             # Check current webhook status
-            webhook_info = await application.bot.get_webhook_info()  # Now awaited
+            webhook_info = application.bot.get_webhook_info()
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
+                application.bot.delete_webhook(drop_pending_updates=True)
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = await application.bot.get_webhook_info()  # Now awaited
+                webhook_info = application.bot.get_webhook_info()
                 logger.info(f"Webhook info after deletion: {webhook_info}")
-                if webhook_info.url:
-                    logger.error("Webhook still exists after deletion attempt.")
-                    continue
-            break
+                if not webhook_info.url:
+                    webhook_deleted = True
+                    break
+            else:
+                webhook_deleted = True
+                break
         except TelegramError as e:
             logger.error(f"Failed to delete webhook (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt == max_retries - 1:
-                logger.warning("Failed to delete webhook after maximum retries. Proceeding with polling anyway.")
-                # Proceed with polling instead of exiting
-                break
+                logger.warning("Failed to delete webhook after maximum retries. Attempting manual deletion via Telegram API.")
+                if manually_delete_webhook(BOT_TOKEN):
+                    webhook_deleted = True
+                else:
+                    logger.warning("Manual webhook deletion failed. Proceeding with polling anyway.")
             time.sleep(5)  # Wait 5 seconds before retrying
+
+    if not webhook_deleted:
+        logger.warning("Webhook may still be set, which could cause a Conflict error during polling. You can manually delete it using: "
+                       f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook")
 
     # Add conversation handler for currency conversion with per_message=True
     conv_handler = ConversationHandler(
@@ -619,7 +718,8 @@ async def main():
         states={
             FROM_CURRENCY: [CallbackQueryHandler(select_from_currency, pattern="^from_")],
             TO_CURRENCY: [CallbackQueryHandler(select_to_currency, pattern="^to_")],
-            AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount)],
+            AMOUNT: [CallbackQueryHandler(select_amount, pattern="^amount_")],
+            CUSTOM_AMOUNT: [CallbackQueryHandler(handle_custom_amount, pattern="^custom_")],
         },
         fallbacks=[],
         per_message=True,  # Ensures callback queries are tracked per message
@@ -633,10 +733,10 @@ async def main():
 
     logger.info("Bot is starting...")
     try:
-        # Run polling, now awaited
-        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        # Let Application manage the event loop with run_polling
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
-        logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running.")
+        logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running or a webhook is set.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
         exit(1)
     except Exception as e:
@@ -644,5 +744,4 @@ async def main():
         exit(1)
 
 if __name__ == "__main__":
-    # Run the asynchronous main function
-    asyncio.run(main())
+    main()  # Run the synchronous main function
