@@ -100,14 +100,8 @@ def get_uzs_exchange_rates():
         else:
             logger.error(f"API response unsuccessful: {data.get('error-type', 'Unknown error')}")
             return None
-    except requests.Timeout:
-        logger.error("Exchange rate API request timed out.")
-        return None
     except requests.RequestException as e:
         logger.error(f"Error fetching UZS exchange rates: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error while fetching UZS exchange rates: {e}")
         return None
 
 # Function to fetch exchange rate between two currencies
@@ -129,20 +123,14 @@ def get_exchange_rate(from_currency, to_currency):
         else:
             logger.error(f"API response unsuccessful: {data.get('error-type', 'Unknown error')}")
             return None
-    except requests.Timeout:
-        logger.error("Exchange rate API request timed out.")
-        return None
     except requests.RequestException as e:
         logger.error(f"Error fetching exchange rate from {from_currency} to {to_currency}: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error while fetching exchange rate from {from_currency} to {to_currency}: {e}")
         return None
 
 # Function to fetch S&P 500 stock prices using Alpha Vantage
 def get_sp500_stock_prices():
     try:
-        symbols = ["AAPL", "MSFT", "AMZN", "TSLA", "GOOGL", "META", "NVDA", "BRK.B", "JNJ", "JPM"]
+        symbols = ["AAPL", "MSFT", "AMZN", "GOOGL"]  # Reduced to 4 symbols to stay within rate limits
         prices = []
         
         for symbol in symbols:
@@ -159,7 +147,8 @@ def get_sp500_stock_prices():
                 latest_price = float(data["Time Series (Daily)"][latest_date]["4. close"])
                 prices.append((symbol, latest_price))
             else:
-                logger.warning(f"Could not fetch data for {symbol}: {data.get('Note', 'Unknown error')}")
+                error_message = data.get('Note', data.get('Information', 'Unknown error'))
+                logger.warning(f"Could not fetch data for {symbol}: {error_message}")
                 prices.append((symbol, "N/A"))
             time.sleep(12)  # Alpha Vantage free tier: 5 requests per minute
 
@@ -175,7 +164,13 @@ def get_sp500_stock_prices():
             latest_date = list(data["Time Series (Daily)"].keys())[0]
             sp500_index = float(data["Time Series (Daily)"][latest_date]["4. close"]) * 10
         else:
+            error_message = data.get('Note', data.get('Information', 'Unknown error'))
+            logger.warning(f"Could not fetch data for SPY: {error_message}")
             sp500_index = "N/A"
+
+        if all(price == "N/A" for _, price in prices) and sp500_index == "N/A":
+            logger.error("Failed to fetch S&P 500 data for all symbols and index.")
+            return "❌ Failed to fetch S&P 500 data. The API may be down or the API key may be invalid."
 
         message = "<b>S&P 500 Stock Prices 📈</b>\n"
         for symbol, price in prices:
@@ -184,15 +179,9 @@ def get_sp500_stock_prices():
         sp500_str = f"{sp500_index:.2f}" if isinstance(sp500_index, float) else sp500_index
         message += f"<b>S&P 500 Index:</b> {escape_html(sp500_str)}\n"
         return message
-    except requests.Timeout:
-        logger.error("Alpha Vantage API request timed out.")
-        return "❌ Alpha Vantage API request timed out."
     except requests.RequestException as e:
         logger.error(f"Error fetching S&P 500 stock prices: {e}")
-        return "❌ Error fetching S&P 500 stock prices."
-    except Exception as e:
-        logger.error(f"Unexpected error while fetching S&P 500 stock prices: {e}")
-        return "❌ Unexpected error while fetching S&P 500 stock prices."
+        return "❌ Error fetching S&P 500 stock prices. Please try again later."
 
 # Function to fetch Crypto Market prices using CoinGecko
 def get_crypto_prices():
@@ -215,17 +204,11 @@ def get_crypto_prices():
                 message += f"{escape_html(name)}: ${price:,.2f}\n"
             return message
         else:
-            logger.error("Invalid response from CoinGecko API.")
+            logger.error(f"Invalid response from CoinGecko API: {data}")
             return "❌ Unable to fetch cryptocurrency prices."
-    except requests.Timeout:
-        logger.error("CoinGecko API request timed out.")
-        return "❌ CoinGecko API request timed out."
     except requests.RequestException as e:
         logger.error(f"Error fetching cryptocurrency prices: {e}")
         return "❌ Error fetching cryptocurrency prices."
-    except Exception as e:
-        logger.error(f"Unexpected error while fetching cryptocurrency prices: {e}")
-        return "❌ Unexpected error while fetching cryptocurrency prices."
 
 # Function to fetch Commodity Market prices using Alpha Vantage
 def get_commodity_prices():
@@ -237,47 +220,33 @@ def get_commodity_prices():
         
         for symbol, name in commodities:
             logger.info(f"Fetching data for {name} ({symbol})...")
-            try:
-                params = {
-                    "function": "TIME_SERIES_DAILY",
-                    "symbol": symbol,
-                    "apikey": ALPHA_VANTAGE_API_KEY
-                }
-                response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                if "Time Series (Daily)" in data:
-                    latest_date = list(data["Time Series (Daily)"].keys())[0]
-                    latest_price = float(data["Time Series (Daily)"][latest_date]["4. close"])
-                    prices.append((name, latest_price))
-                    logger.info(f"Successfully fetched data for {name}: {latest_price}")
-                else:
-                    error_message = data.get('Note', 'Unknown error')
-                    logger.warning(f"Could not fetch data for {name} ({symbol}): {error_message}")
-                    prices.append((name, "N/A"))
-                time.sleep(12)
-            except requests.Timeout:
-                logger.error(f"API request timed out for {name} ({symbol})")
+            params = {
+                "function": "TIME_SERIES_DAILY",
+                "symbol": symbol,
+                "apikey": ALPHA_VANTAGE_API_KEY
+            }
+            response = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if "Time Series (Daily)" in data:
+                latest_date = list(data["Time Series (Daily)"].keys())[0]
+                latest_price = float(data["Time Series (Daily)"][latest_date]["4. close"])
+                prices.append((name, latest_price))
+                logger.info(f"Successfully fetched data for {name}: {latest_price}")
+            else:
+                error_message = data.get('Note', data.get('Information', 'Unknown error'))
+                logger.warning(f"Could not fetch data for {name} ({symbol}): {error_message}")
                 prices.append((name, "N/A"))
-                continue
-            except requests.RequestException as e:
-                logger.error(f"Error fetching data for {name} ({symbol}): {e}")
-                prices.append((name, "N/A"))
-                continue
-            except Exception as e:
-                logger.error(f"Unexpected error while fetching data for {name} ({symbol}): {e}")
-                prices.append((name, "N/A"))
-                continue
+            time.sleep(12)
 
         message = "<b>Commodity Market ⛏️</b>\n"
         for name, price in prices:
             price_str = f"${price:,.2f}" if isinstance(price, float) else price
             message += f"{escape_html(name)}: {escape_html(price_str)}\n"
-        logger.info("Commodity prices fetched successfully.")
         return message
-    except Exception as e:
-        logger.error(f"Unexpected error in get_commodity_prices: {e}")
-        return "❌ Unexpected error while fetching commodity prices."
+    except requests.RequestException as e:
+        logger.error(f"Error fetching commodity prices: {e}")
+        return "❌ Error fetching commodity prices."
 
 # Function to fetch Currency Market prices using ExchangeRate-API
 def get_currency_prices():
@@ -327,15 +296,9 @@ def get_currency_prices():
         else:
             logger.error(f"API response unsuccessful: {data.get('error-type', 'Unknown error')}")
             return "❌ Unable to fetch currency prices."
-    except requests.Timeout:
-        logger.error("Exchange rate API request timed out.")
-        return "❌ Exchange rate API request timed out."
     except requests.RequestException as e:
         logger.error(f"Error fetching currency prices: {e}")
         return "❌ Error fetching currency prices."
-    except Exception as e:
-        logger.error(f"Unexpected error while fetching currency prices: {e}")
-        return "❌ Unexpected error while fetching currency prices."
 
 # Function to fetch and cache market data
 async def fetch_market_data(category):
@@ -364,57 +327,37 @@ async def fetch_market_data(category):
 
 # Function to show the main menu with inline buttons
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, is_start=False):
-    try:
-        menu_text = "<b>🎉 Welcome to the bot! Please select an option below:</b>" if is_start else "<b>Please select an option below:</b>"
-        if update.callback_query:
-            query = update.callback_query
-            current_text = query.message.text or ""
-            logger.info(f"Showing main menu (callback). Current text: {current_text}, New text: {menu_text}")
-            if current_text != menu_text:
-                await query.message.edit_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
-                logger.info("Main menu updated successfully (edit).")
-            else:
-                logger.info("Skipping main menu edit: content unchanged.")
-            return
-        else:
-            await update.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
-            logger.info("Main menu displayed successfully (new message).")
-    except TelegramError as e:
-        logger.error(f"Telegram error while showing main menu: {e}")
-        if update.message:
-            await update.message.reply_text("❌ An error occurred while showing the main menu. Please try again.")
-    except Exception as e:
-        logger.error(f"Unexpected error while showing main menu: {e}")
-        if update.message:
-            await update.message.reply_text("❌ An error occurred while showing the main menu. Please try again.")
+    menu_text = "<b>🎉 Welcome to the bot! Please select an option below:</b>" if is_start else "<b>Please select an option below:</b>"
+    if update.callback_query:
+        query = update.callback_query
+        try:
+            await query.message.edit_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
+            logger.info("Main menu updated successfully (edit).")
+        except TelegramError as e:
+            logger.error(f"Failed to edit main menu message: {e}")
+            await query.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
+            logger.info("Main menu sent as a new message (fallback).")
+    else:
+        await update.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
+        logger.info("Main menu sent successfully (new message).")
 
 # Function to show the Market Prices submenu with inline buttons
 async def show_market_prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        menu_text = "<b>📊 Market Prices</b>\nPlease select a market data option below:"
-        if update.callback_query:
-            query = update.callback_query
-            current_text = query.message.text or ""
-            logger.info(f"Showing market prices menu (callback). Current text: {current_text}, New text: {menu_text}")
-            if current_text != menu_text:
-                await query.message.edit_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
-                logger.info("Market Prices menu updated successfully (edit).")
-            else:
-                logger.info("Skipping market prices menu edit: content unchanged.")
-            return
-        else:
-            await update.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
-            logger.info("Market Prices menu displayed successfully (new message).")
-    except TelegramError as e:
-        logger.error(f"Telegram error while showing Market Prices menu: {e}")
-        if update.message:
-            await update.message.reply_text("❌ An error occurred while showing the Market Prices menu. Please try again.")
-    except Exception as e:
-        logger.error(f"Unexpected error while showing Market Prices menu: {e}")
-        if update.message:
-            await update.message.reply_text("❌ An error occurred while showing the Market Prices menu. Please try again.")
+    menu_text = "<b>📊 Market Prices</b>\nPlease select a market data option below:"
+    if update.callback_query:
+        query = update.callback_query
+        try:
+            await query.message.edit_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
+            logger.info("Market Prices menu updated successfully (edit).")
+        except TelegramError as e:
+            logger.error(f"Failed to edit Market Prices menu message: {e}")
+            await query.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
+            logger.info("Market Prices menu sent as a new message (fallback).")
+    else:
+        await update.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
+        logger.info("Market Prices menu sent successfully (new message).")
 
-# /start command handler with subscription check and error handling
+# /start command handler with subscription check
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"Received /start command from user {user_id}")
@@ -434,12 +377,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👉 Join here: <a href='https://t.me/UDEA_Finance_Club'>UDEA Finance Club</a>"
             )
             await update.message.reply_text(welcome_text, parse_mode='HTML')
-        logger.info(f"User {user_id} started the bot.")
     except TelegramError as e:
         logger.error(f"Telegram error while checking subscription for user {user_id}: {e}")
-        await update.message.reply_text("❌ An error occurred while checking subscription. Please try again.")
-    except Exception as e:
-        logger.error(f"Unexpected error while checking subscription for user {user_id}: {e}")
         await update.message.reply_text("❌ An error occurred while checking subscription. Please try again.")
 
 # Handler for the "Currency Calculator" button
@@ -447,18 +386,14 @@ async def start_currency_calculator(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     logger.info("Currency Calculator button pressed.")
+    new_text = "Choose the currency you want to convert from:"
     try:
-        current_text = query.message.text or ""
-        new_text = "Choose the currency you want to convert from:"
-        logger.info(f"Starting currency calculator. Current text: {current_text}, New text: {new_text}")
-        if current_text != new_text:
-            await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
-            logger.info("Currency calculator started successfully (edit).")
-        else:
-            logger.info("Skipping currency calculator edit: content unchanged.")
+        await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
+        logger.info("Currency calculator started successfully (edit).")
     except TelegramError as e:
-        logger.error(f"Telegram error while starting currency calculator: {e}")
-        await query.message.reply_text("❌ An error occurred while starting the currency calculator. Please try again.")
+        logger.error(f"Failed to edit currency calculator message: {e}")
+        await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
+        logger.info("Currency calculator sent as a new message (fallback).")
     return FROM_CURRENCY
 
 # Handler for selecting the "from" currency
@@ -468,18 +403,14 @@ async def select_from_currency(update: Update, context: ContextTypes.DEFAULT_TYP
     from_currency = query.data.split("_")[1]
     context.user_data["from_currency"] = from_currency
     logger.info(f"User selected 'from' currency: {from_currency}")
+    new_text = "Now, choose the currency you want to convert to:"
     try:
-        current_text = query.message.text or ""
-        new_text = "Now, choose the currency you want to convert to:"
-        logger.info(f"Selecting 'from' currency. Current text: {current_text}, New text: {new_text}")
-        if current_text != new_text:
-            await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
-            logger.info("Updated to 'to' currency selection successfully (edit).")
-        else:
-            logger.info("Skipping 'to' currency selection edit: content  content unchanged.")
+        await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
+        logger.info("Updated to 'to' currency selection successfully (edit).")
     except TelegramError as e:
-        logger.error(f"Telegram error while selecting 'from' currency: {e}")
-        await query.message.reply_text("❌ An error occurred while selecting the currency. Please try again.")
+        logger.error(f"Failed to edit 'to' currency selection message: {e}")
+        await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
+        logger.info("Updated to 'to' currency selection as a new message (fallback).")
     return TO_CURRENCY
 
 # Handler for selecting the "to" currency
@@ -489,18 +420,14 @@ async def select_to_currency(update: Update, context: ContextTypes.DEFAULT_TYPE)
     to_currency = query.data.split("_")[1]
     context.user_data["to_currency"] = to_currency
     logger.info(f"User selected 'to' currency: {to_currency}")
+    new_text = "Enter the amount you want to convert:"
     try:
-        current_text = query.message.text or ""
-        new_text = "Enter the amount you want to convert:"
-        logger.info(f"Selecting 'to' currency. Current text: {current_text}, New text: {new_text}")
-        if current_text != new_text:
-            await query.message.edit_text(new_text, parse_mode='HTML')
-            logger.info("Updated to amount input successfully (edit).")
-        else:
-            logger.info("Skipping amount input edit: content unchanged.")
+        await query.message.edit_text(new_text, parse_mode='HTML')
+        logger.info("Updated to amount input successfully (edit).")
     except TelegramError as e:
-        logger.error(f"Telegram error while selecting 'to' currency: {e}")
-        await query.message.reply_text("❌ An error occurred while selecting the currency. Please try again.")
+        logger.error(f"Failed to edit amount input message: {e}")
+        await query.message.reply_text(new_text, parse_mode='HTML')
+        logger.info("Updated to amount input as a new message (fallback).")
     return AMOUNT
 
 # Handler for the amount input in the currency conversion process
@@ -532,11 +459,11 @@ async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Handler for inline button callbacks (excluding currency conversion)
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    try:
-        await query.answer()
-        callback_data = query.data
-        logger.info(f"Callback received: {callback_data} from user {update.effective_user.id}")
+    await query.answer()
+    callback_data = query.data
+    logger.info(f"Callback received: {callback_data} from user {update.effective_user.id}")
 
+    try:
         if callback_data == "about_bot":
             about_text = (
                 "<b>ℹ About the Bot</b>\n\n"
@@ -546,13 +473,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "The bot delivers real-time data on stocks, cryptocurrencies, commodity markets, and currency rates. It also keeps you updated with the most important economic and business news.\n\n"
                 "Explore the world of finance and make informed decisions! 🚀"
             )
-            current_text = query.message.text or ""
-            logger.info(f"About bot callback. Current text: {current_text}, New text: {about_text}")
-            if current_text != about_text:
+            try:
                 await query.message.edit_text(about_text, parse_mode='HTML')
                 logger.info("About bot message updated successfully (edit).")
-            else:
-                logger.info("Skipping about bot edit: content unchanged.")
+            except TelegramError as e:
+                logger.error(f"Failed to edit about bot message: {e}")
+                await query.message.reply_text(about_text, parse_mode='HTML')
+                logger.info("About bot message sent as a new message (fallback).")
             await show_main_menu(update, context)
 
         elif callback_data == "admin_contact":
@@ -562,13 +489,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "or want to learn more about finance, feel free to reach out!\n\n"
                 "📩 Contact: <a href='https://t.me/mirshodbek_yakhshiyev'>@mirshodbek_yakhshiyev</a>\n"
             )
-            current_text = query.message.text or ""
-            logger.info(f"Admin contact callback. Current text: {current_text}, New text: {admin_text}")
-            if current_text != admin_text:
+            try:
                 await query.message.edit_text(admin_text, parse_mode='HTML')
                 logger.info("Admin contact message updated successfully (edit).")
-            else:
-                logger.info("Skipping admin contact edit: content unchanged.")
+            except TelegramError as e:
+                logger.error(f"Failed to edit admin contact message: {e}")
+                await query.message.reply_text(admin_text, parse_mode='HTML')
+                logger.info("Admin contact message sent as a new message (fallback).")
             await show_main_menu(update, context)
 
         elif callback_data == "market_prices":
@@ -583,15 +510,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         message += f"1 {escape_html(currency)} = {round(1 / rate, 2)} UZS\n"
                     else:
                         message += f"1 {escape_html(currency)} = N/A\n"
-                current_text = query.message.text or ""
-                logger.info(f"UZS comparison callback. Current text: {current_text}, New text: {message}")
-                if current_text != message:
+                try:
                     await query.message.edit_text(message, parse_mode="HTML")
                     logger.info("UZS exchange rates message updated successfully (edit).")
-                else:
-                    logger.info("Skipping UZS exchange rates edit: content unchanged.")
+                except TelegramError as e:
+                    logger.error(f"Failed to edit UZS exchange rates message: {e}")
+                    await query.message.reply_text(message, parse_mode="HTML")
+                    logger.info("UZS exchange rates message sent as a new message (fallback).")
             else:
-                await query.message.edit_text("❌ Error: Unable to fetch currency rates.", parse_mode='HTML')
+                error_message = "❌ Error: Unable to fetch currency rates."
+                try:
+                    await query.message.edit_text(error_message, parse_mode='HTML')
+                    logger.info("UZS exchange rates error message updated successfully (edit).")
+                except TelegramError as e:
+                    logger.error(f"Failed to edit UZS exchange rates error message: {e}")
+                    await query.message.reply_text(error_message, parse_mode='HTML')
+                    logger.info("UZS exchange rates error message sent as a new message (fallback).")
             await show_main_menu(update, context)
 
         elif callback_data == "market_sp500":
@@ -599,13 +533,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("sp500")
             logger.info(f"S&P 500 data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            current_text = query.message.text or ""
-            logger.info(f"S&P 500 callback. Current text: {current_text}, New text: {new_message}")
-            if current_text != new_message:
+            try:
                 await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("S&P 500 message updated successfully (edit).")
-            else:
-                logger.info("Skipping S&P 500 edit: content unchanged.")
+            except TelegramError as e:
+                logger.error(f"Failed to edit S&P 500 message: {e}")
+                await query.message.reply_text(new_message, parse_mode='HTML')
+                logger.info("S&P 500 message sent as a new message (fallback).")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_crypto":
@@ -613,13 +547,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("crypto")
             logger.info(f"Crypto Market data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            current_text = query.message.text or ""
-            logger.info(f"Crypto Market callback. Current text: {current_text}, New text: {new_message}")
-            if current_text != new_message:
+            try:
                 await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("Crypto Market message updated successfully (edit).")
-            else:
-                logger.info("Skipping Crypto Market edit: content unchanged.")
+            except TelegramError as e:
+                logger.error(f"Failed to edit Crypto Market message: {e}")
+                await query.message.reply_text(new_message, parse_mode='HTML')
+                logger.info("Crypto Market message sent as a new message (fallback).")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_commodity":
@@ -628,16 +562,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 data = await asyncio.wait_for(fetch_market_data("commodity"), timeout=30)
                 logger.info(f"Commodity Market data fetched: {data}")
                 new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-                current_text = query.message.text or ""
-                logger.info(f"Commodity Market callback. Current text: {current_text}, New text: {new_message}")
-                if current_text != new_message:
+                try:
                     await query.message.edit_text(new_message, parse_mode='HTML')
                     logger.info("Commodity Market message updated successfully (edit).")
-                else:
-                    logger.info("Skipping Commodity Market edit: content unchanged.")
+                except TelegramError as e:
+                    logger.error(f"Failed to edit Commodity Market message: {e}")
+                    await query.message.reply_text(new_message, parse_mode='HTML')
+                    logger.info("Commodity Market message sent as a new message (fallback).")
             except asyncio.TimeoutError:
                 logger.error("Fetching commodity prices timed out after 30 seconds.")
-                await query.message.edit_text("❌ Fetching commodity prices timed out. Please try again later.", parse_mode='HTML')
+                error_message = "❌ Fetching commodity prices timed out. Please try again later."
+                try:
+                    await query.message.edit_text(error_message, parse_mode='HTML')
+                    logger.info("Commodity Market timeout message updated successfully (edit).")
+                except TelegramError as e:
+                    logger.error(f"Failed to edit Commodity Market timeout message: {e}")
+                    await query.message.reply_text(error_message, parse_mode='HTML')
+                    logger.info("Commodity Market timeout message sent as a new message (fallback).")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_currency":
@@ -645,13 +586,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("currency")
             logger.info(f"Currency Market data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            current_text = query.message.text or ""
-            logger.info(f"Currency Market callback. Current text: {current_text}, New text: {new_message}")
-            if current_text != new_message:
+            try:
                 await query.message.edit_text(new_message, parse_mode='HTML')
                 logger.info("Currency Market message updated successfully (edit).")
-            else:
-                logger.info("Skipping Currency Market edit: content unchanged.")
+            except TelegramError as e:
+                logger.error(f"Failed to edit Currency Market message: {e}")
+                await query.message.reply_text(new_message, parse_mode='HTML')
+                logger.info("Currency Market message sent as a new message (fallback).")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "back_to_main":
@@ -659,33 +600,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         else:
             logger.warning(f"Unknown callback data received: {callback_data} from user {update.effective_user.id}")
-            await query.message.edit_text("❌ Unknown command. Please try again.", parse_mode='HTML')
+            error_message = "❌ Unknown command. Please try again."
+            try:
+                await query.message.edit_text(error_message, parse_mode='HTML')
+                logger.info("Unknown command message updated successfully (edit).")
+            except TelegramError as e:
+                logger.error(f"Failed to edit unknown command message: {e}")
+                await query.message.reply_text(error_message, parse_mode='HTML')
+                logger.info("Unknown command message sent as a new message (fallback).")
 
     except TelegramError as e:
         logger.error(f"Telegram error while handling callback: {e}")
         await query.message.reply_text("❌ An error occurred while handling the callback. Please try again.", parse_mode='HTML')
-    except Exception as e:
-        logger.error(f"Unexpected error while handling callback: {e}")
-        await query.message.reply_text("❌ An error occurred while handling the callback. Please try again.", parse_mode='HTML')
 
 # Handler for unexpected text messages
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        await update.message.reply_text("Please select an option from the menu.", parse_mode='HTML')
-        await show_main_menu(update, context)
-        logger.info(f"User {update.effective_user.id} sent unexpected text: {update.message.text}")
-    except TelegramError as e:
-        logger.error(f"Telegram error while handling text message: {e}")
-        await update.message.reply_text("❌ An error occurred while handling the text message. Please try again.", parse_mode='HTML')
-    except Exception as e:
-        logger.error(f"Unexpected error while handling text message: {e}")
-        await update.message.reply_text("❌ An error occurred while handling the text message. Please try again.", parse_mode='HTML')
+    await update.message.reply_text("Please select an option from the menu.", parse_mode='HTML')
+    await show_main_menu(update, context)
+    logger.info(f"User {update.effective_user.id} sent unexpected text: {update.message.text}")
 
 # Error handler to catch and handle exceptions
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error {context.error}")
-    
-    # Handle specific errors
     if isinstance(context.error, Conflict):
         logger.error("Conflict error detected. This usually means multiple bot instances are running or a webhook is set.")
         if update and update.effective_message:
