@@ -1,1 +1,4 @@
-
+requests
+python-dotenv
+python-telegram-bot
+python==3.11.11
