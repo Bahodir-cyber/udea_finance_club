@@ -665,32 +665,22 @@ def manually_delete_webhook(token):
         return False
 
 # Main function to run the bot (now asynchronous)
-async def main():
-    # Validate the bot token before proceeding
-    if not validate_bot_token(BOT_TOKEN):
-        logger.critical("Invalid or revoked bot token. Please check your TELEGRAM_BOT_TOKEN in the .env file. Exiting.")
-        exit(1)
-
-    # Build the application with a global timeout for API requests
-    application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()
-
-    # Add an error handler
-    application.add_error_handler(error_handler)
-
-    # Check and delete any existing webhook to ensure polling works
+# Main function to run the bot (now asynchronous)
+# Async function to handle webhook deletion
+async def delete_webhook(application):
     max_retries = 3
     webhook_deleted = False
     for attempt in range(max_retries):
         try:
             # Check current webhook status
-            webhook_info = await application.bot.get_webhook_info()  # Now awaited
+            webhook_info = await application.bot.get_webhook_info()
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
+                await application.bot.delete_webhook(drop_pending_updates=True)
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = await application.bot.get_webhook_info()  # Now awaited
+                webhook_info = await application.bot.get_webhook_info()
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if not webhook_info.url:
                     webhook_deleted = True
@@ -707,7 +697,27 @@ async def main():
                 else:
                     logger.warning("Manual webhook deletion failed. Proceeding with polling anyway.")
             time.sleep(5)  # Wait 5 seconds before retrying
+    return webhook_deleted
 
+# Main function to run the bot (now synchronous)
+def main():
+    # Validate the bot token before proceeding
+    if not validate_bot_token(BOT_TOKEN):
+        logger.critical("Invalid or revoked bot token. Please check your TELEGRAM_BOT_TOKEN in the .env file. Exiting.")
+        exit(1)
+
+    # Build the application with a global timeout for API requests
+    application = Application.builder().token(BOT_TOKEN).pool_timeout(30).build()
+
+    # Add an error handler
+    application.add_error_handler(error_handler)
+
+    # Initialize the application to set up the bot
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(application.initialize())
+
+    # Delete any existing webhook before starting polling
+    webhook_deleted = loop.run_until_complete(delete_webhook(application))
     if not webhook_deleted:
         logger.warning("Webhook may still be set, which could cause a Conflict error during polling. You can manually delete it using: "
                        f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook")
@@ -733,8 +743,8 @@ async def main():
 
     logger.info("Bot is starting...")
     try:
-        # Run polling, now awaited
-        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        # Let Application manage the event loop with run_polling
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
         logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running or a webhook is set.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
@@ -742,7 +752,9 @@ async def main():
     except Exception as e:
         logger.error(f"Unexpected error during polling: {e}")
         exit(1)
+    finally:
+        # Shutdown the application to clean up resources
+        loop.run_until_complete(application.shutdown())
 
 if __name__ == "__main__":
-    # Run the asynchronous main function
-    asyncio.run(main())
+    main()  # Run the synchronous main function
