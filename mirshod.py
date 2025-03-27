@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAHILpcWmWo7SFRRxRmVwwyAsGWJy18c1HQ")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAGQWTmwIajKCJi5zjWWQMNRMa7jrpACq2Q")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
