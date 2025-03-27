@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAG5d5UKwhvyFJ_EMBLKdT8J2OZb14xU78Q")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAHHpP3saJ4O9jfW7Xr2GkQSxtOTMEPj8Z0")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
@@ -52,7 +52,7 @@ market_data_cache = {
 }
 CACHE_DURATION = timedelta(minutes=5)  # Refresh data every 5 minutes
 
-# Redesigned main menu with a more compact layout and additional emojis
+# Redesigned main menu with a compact layout and emojis
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
     [
         InlineKeyboardButton("ℹ️ About", callback_data="about_bot"),
@@ -67,7 +67,7 @@ MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
     ],
 ])
 
-# Redesigned Market Prices submenu with a more compact layout and additional emojis
+# Redesigned Market Prices submenu with a compact layout and emojis
 MARKET_PRICES_KEYBOARD = InlineKeyboardMarkup([
     [
         InlineKeyboardButton("📊 S&P 500", callback_data="market_sp500"),
@@ -579,9 +579,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.effective_message:
             await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again.", parse_mode='HTML')
 
-# Main function to run the bot
-# Main function to run the bot (now async)
-async def main():
+# Main function to run the bot (synchronous, to avoid event loop conflicts)
+def main():
     # Build the application
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -592,15 +591,15 @@ async def main():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Check current webhook status
-            webhook_info = await application.bot.get_webhook_info()  # Now awaited
+            # Check current webhook status with a longer timeout
+            webhook_info = application.bot.get_webhook_info(timeout=30)  # Increased timeout to 30 seconds
             logger.info(f"Current webhook info: {webhook_info}")
             if webhook_info.url:
                 logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
-                await application.bot.delete_webhook(drop_pending_updates=True)  # Now awaited
+                application.bot.delete_webhook(drop_pending_updates=True, timeout=30)  # Increased timeout to 30 seconds
                 logger.info("Webhook deleted successfully.")
                 # Verify webhook deletion
-                webhook_info = await application.bot.get_webhook_info()  # Now awaited
+                webhook_info = application.bot.get_webhook_info(timeout=30)  # Increased timeout to 30 seconds
                 logger.info(f"Webhook info after deletion: {webhook_info}")
                 if webhook_info.url:
                     logger.error("Webhook still exists after deletion attempt.")
@@ -611,9 +610,9 @@ async def main():
             if attempt == max_retries - 1:
                 logger.critical("Failed to delete webhook after maximum retries. Exiting.")
                 exit(1)
-            time.sleep(2)  # Wait before retrying
+            time.sleep(5)  # Increased wait time to 5 seconds before retrying
 
-    # Add conversation handler for currency conversion
+    # Add conversation handler for currency conversion with per_message=True
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_currency_calculator, pattern="^currency_calculator$")],
         states={
@@ -622,6 +621,7 @@ async def main():
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount)],
         },
         fallbacks=[],
+        per_message=True,  # Added to address PTBUserWarning
     )
 
     # Add handlers
@@ -632,7 +632,8 @@ async def main():
 
     logger.info("Bot is starting...")
     try:
-        await application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)  # Now awaited
+        # Run polling directly, letting Application manage the event loop
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Conflict as e:
         logger.error(f"Conflict error during polling: {e}. This usually means another instance of the bot is running.")
         logger.info("Please ensure only one instance of the bot is running and no webhook is set.")
@@ -642,5 +643,4 @@ async def main():
         exit(1)
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())  # Run the async main function
+    main()  # Run the synchronous main function directly
