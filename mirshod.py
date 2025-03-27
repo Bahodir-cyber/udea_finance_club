@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Load sensitive information from environment variables
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAGrKOrh5QtxEK5FOWK4FW94UnvEvaSCXdc")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7684629360:AAEEGcts8t-FV2rkFHjX140PykViPF1fLpA")
 if not BOT_TOKEN:
     logger.critical("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
     exit(1)
@@ -40,7 +40,7 @@ ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 # List of currencies for UZS comparison and currency converter
-CURRENCIES = ["UZS", "USD", "GBP", "JPY", "EUR", "RUB"]
+CURRENCIES = ["UZS", "USD", "GBP", "JPY", "EUR", "RUB", "QAR", "KZT"]
 
 # Cache for market data with timestamps
 market_data_cache = {
@@ -52,21 +52,34 @@ market_data_cache = {
 }
 CACHE_DURATION = timedelta(minutes=5)  # Refresh data every 5 minutes
 
-# Cache InlineKeyboardMarkup objects for main menu and Market Prices submenu
+# Redesigned main menu with a more compact layout and additional emojis
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("ℹ About the Bot", callback_data="about_bot")],
-    [InlineKeyboardButton("📊 Market Prices", callback_data="market_prices")],
-    [InlineKeyboardButton("🇺🇿 UZS Price Comparison", callback_data="uzs_comparison")],
-    [InlineKeyboardButton("👤 Admin Contact", callback_data="admin_contact")],
-    [InlineKeyboardButton("💱 Currency Calculator", callback_data="currency_calculator")],
+    [
+        InlineKeyboardButton("ℹ️ About", callback_data="about_bot"),
+        InlineKeyboardButton("📈 Markets", callback_data="market_prices"),
+    ],
+    [
+        InlineKeyboardButton("🇺🇿 UZS Rates", callback_data="uzs_comparison"),
+        InlineKeyboardButton("💱 Convert", callback_data="currency_calculator"),
+    ],
+    [
+        InlineKeyboardButton("👨‍💼 Contact Admin", callback_data="admin_contact"),
+    ],
 ])
 
+# Redesigned Market Prices submenu with a more compact layout and additional emojis
 MARKET_PRICES_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("S&P 500 Stock Prices", callback_data="market_sp500")],
-    [InlineKeyboardButton("Crypto Market", callback_data="market_crypto")],
-    [InlineKeyboardButton("Commodity Market", callback_data="market_commodity")],
-    [InlineKeyboardButton("Currency Market", callback_data="market_currency")],
-    [InlineKeyboardButton("⬅️ Back", callback_data="back_to_main")],
+    [
+        InlineKeyboardButton("📊 S&P 500", callback_data="market_sp500"),
+        InlineKeyboardButton("🚀 Crypto", callback_data="market_crypto"),
+    ],
+    [
+        InlineKeyboardButton("⛏️ Commodities", callback_data="market_commodity"),
+        InlineKeyboardButton("💵 Currencies", callback_data="market_currency"),
+    ],
+    [
+        InlineKeyboardButton("⬅️ Back to Main", callback_data="back_to_main"),
+    ],
 ])
 
 # Function to create a currency selection keyboard
@@ -325,37 +338,23 @@ async def fetch_market_data(category):
     market_data_cache[category]["last_updated"] = now
     return data
 
-# Function to show the main menu with inline buttons
+# Function to show the main menu with inline buttons as a new message
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, is_start=False):
-    menu_text = "<b>🎉 Welcome to the bot! Please select an option below:</b>" if is_start else "<b>Please select an option below:</b>"
+    menu_text = "<b>🌟 Welcome to UDEA Finance Bot! 🌟</b>\n\nChoose an option below:" if is_start else "<b>🌟 Choose an option below:</b>"
     if update.callback_query:
         query = update.callback_query
-        try:
-            await query.message.edit_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
-            logger.info("Main menu updated successfully (edit).")
-        except TelegramError as e:
-            logger.error(f"Failed to edit main menu message: {e}")
-            await query.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
-            logger.info("Main menu sent as a new message (fallback).")
+        await query.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
+        logger.info("Main menu sent as a new message (callback).")
     else:
         await update.message.reply_text(menu_text, reply_markup=MAIN_MENU_KEYBOARD, parse_mode='HTML')
-        logger.info("Main menu sent successfully (new message).")
+        logger.info("Main menu sent as a new message (start).")
 
-# Function to show the Market Prices submenu with inline buttons
+# Function to show the Market Prices submenu with inline buttons as a new message
 async def show_market_prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_text = "<b>📊 Market Prices</b>\nPlease select a market data option below:"
-    if update.callback_query:
-        query = update.callback_query
-        try:
-            await query.message.edit_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
-            logger.info("Market Prices menu updated successfully (edit).")
-        except TelegramError as e:
-            logger.error(f"Failed to edit Market Prices menu message: {e}")
-            await query.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
-            logger.info("Market Prices menu sent as a new message (fallback).")
-    else:
-        await update.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
-        logger.info("Market Prices menu sent successfully (new message).")
+    menu_text = "<b>📈 Market Prices 📉</b>\n\nSelect a market to explore:"
+    query = update.callback_query
+    await query.message.reply_text(menu_text, reply_markup=MARKET_PRICES_KEYBOARD, parse_mode='HTML')
+    logger.info("Market Prices menu sent as a new message.")
 
 # /start command handler with subscription check
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -369,11 +368,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.info(f"User {user_id} is not a member of the channel, prompting to join")
             welcome_text = (
-                "<b>🚀 Welcome!</b>\n\n"
-                "Hello! 🎉 To fully use this bot, you need to join our official channel first. 📢\n\n"
-                "<b>🔒 Why is this required?</b>\n"
-                "We provide you with real-time financial data, market news, and currency tools for free! "
-                "By joining the channel, you support the bot and stay updated with important news.\n\n"
+                "<b>🚀 Welcome to UDEA Finance Bot!</b>\n\n"
+                "To get started, please join our official channel first! 📢\n\n"
+                "<b>🔒 Why join?</b>\n"
+                "We provide real-time financial data, market news, and currency tools for free! "
+                "Joining the channel helps support the bot and keeps you updated with the latest news.\n\n"
                 "👉 Join here: <a href='https://t.me/UDEA_Finance_Club'>UDEA Finance Club</a>"
             )
             await update.message.reply_text(welcome_text, parse_mode='HTML')
@@ -386,14 +385,9 @@ async def start_currency_calculator(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     logger.info("Currency Calculator button pressed.")
-    new_text = "Choose the currency you want to convert from:"
-    try:
-        await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
-        logger.info("Currency calculator started successfully (edit).")
-    except TelegramError as e:
-        logger.error(f"Failed to edit currency calculator message: {e}")
-        await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
-        logger.info("Currency calculator sent as a new message (fallback).")
+    new_text = "💱 Choose the currency you want to convert from:"
+    await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("from"), parse_mode='HTML')
+    logger.info("Currency calculator started as a new message.")
     return FROM_CURRENCY
 
 # Handler for selecting the "from" currency
@@ -403,14 +397,9 @@ async def select_from_currency(update: Update, context: ContextTypes.DEFAULT_TYP
     from_currency = query.data.split("_")[1]
     context.user_data["from_currency"] = from_currency
     logger.info(f"User selected 'from' currency: {from_currency}")
-    new_text = "Now, choose the currency you want to convert to:"
-    try:
-        await query.message.edit_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
-        logger.info("Updated to 'to' currency selection successfully (edit).")
-    except TelegramError as e:
-        logger.error(f"Failed to edit 'to' currency selection message: {e}")
-        await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
-        logger.info("Updated to 'to' currency selection as a new message (fallback).")
+    new_text = "💱 Now, choose the currency you want to convert to:"
+    await query.message.reply_text(new_text, reply_markup=get_currency_keyboard("to"), parse_mode='HTML')
+    logger.info("Updated to 'to' currency selection as a new message.")
     return TO_CURRENCY
 
 # Handler for selecting the "to" currency
@@ -420,14 +409,9 @@ async def select_to_currency(update: Update, context: ContextTypes.DEFAULT_TYPE)
     to_currency = query.data.split("_")[1]
     context.user_data["to_currency"] = to_currency
     logger.info(f"User selected 'to' currency: {to_currency}")
-    new_text = "Enter the amount you want to convert:"
-    try:
-        await query.message.edit_text(new_text, parse_mode='HTML')
-        logger.info("Updated to amount input successfully (edit).")
-    except TelegramError as e:
-        logger.error(f"Failed to edit amount input message: {e}")
-        await query.message.reply_text(new_text, parse_mode='HTML')
-        logger.info("Updated to amount input as a new message (fallback).")
+    new_text = "💱 Enter the amount you want to convert:"
+    await query.message.reply_text(new_text, parse_mode='HTML')
+    logger.info("Updated to amount input as a new message.")
     return AMOUNT
 
 # Handler for the amount input in the currency conversion process
@@ -466,36 +450,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if callback_data == "about_bot":
             about_text = (
-                "<b>ℹ About the Bot</b>\n\n"
-                "This bot is a project by UDEA Finance Club, designed to help students and finance enthusiasts stay informed about market trends, "
-                "currency rates, and financial news. 📊💰\n\n"
-                "The project is led by Mirshod Yaxshiyev, who founded this club to promote financial literacy and provide practical experience to students.\n\n"
-                "The bot delivers real-time data on stocks, cryptocurrencies, commodity markets, and currency rates. It also keeps you updated with the most important economic and business news.\n\n"
-                "Explore the world of finance and make informed decisions! 🚀"
+                "<b>ℹ️ About UDEA Finance Bot</b>\n\n"
+                "Welcome to the UDEA Finance Bot, created by the UDEA Finance Club! 🎉\n\n"
+                "Our mission is to empower students and finance enthusiasts with real-time market data, currency rates, and financial insights. 📊💰\n\n"
+                "Led by Mirshod Yaxshiyev, this bot provides:\n"
+                "✅ Stock prices (S&P 500)\n"
+                "✅ Cryptocurrency updates\n"
+                "✅ Commodity and currency markets\n"
+                "✅ UZS exchange rates\n\n"
+                "Start exploring the world of finance today! 🚀"
             )
-            try:
-                await query.message.edit_text(about_text, parse_mode='HTML')
-                logger.info("About bot message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit about bot message: {e}")
-                await query.message.reply_text(about_text, parse_mode='HTML')
-                logger.info("About bot message sent as a new message (fallback).")
+            await query.message.reply_text(about_text, parse_mode='HTML')
+            logger.info("About bot message sent as a new message.")
             await show_main_menu(update, context)
 
         elif callback_data == "admin_contact":
             admin_text = (
-                "<b>Admin Contact 👤</b>\n\n"
-                "Hey there! This is the admin of UDEA Finance Club. If you have any questions about the bot, need assistance, "
-                "or want to learn more about finance, feel free to reach out!\n\n"
-                "📩 Contact: <a href='https://t.me/mirshodbek_yakhshiyev'>@mirshodbek_yakhshiyev</a>\n"
+                "<b>👨‍💼 Contact Admin</b>\n\n"
+                "Need help or have questions? Reach out to the admin of UDEA Finance Club! 📩\n\n"
+                "👉 Contact: <a href='https://t.me/mirshodbek_yakhshiyev'>@mirshodbek_yakhshiyev</a>\n"
             )
-            try:
-                await query.message.edit_text(admin_text, parse_mode='HTML')
-                logger.info("Admin contact message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit admin contact message: {e}")
-                await query.message.reply_text(admin_text, parse_mode='HTML')
-                logger.info("Admin contact message sent as a new message (fallback).")
+            await query.message.reply_text(admin_text, parse_mode='HTML')
+            logger.info("Admin contact message sent as a new message.")
             await show_main_menu(update, context)
 
         elif callback_data == "market_prices":
@@ -504,28 +480,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif callback_data == "uzs_comparison":
             rates = await fetch_market_data("uzs_rates")
             if rates:
-                message = "<b>🇺🇿 UZS Exchange Rates:</b>\n\n"
+                message = "<b>🇺🇿 UZS Exchange Rates</b>\n\n"
                 for currency, rate in rates.items():
                     if rate != "N/A":
                         message += f"1 {escape_html(currency)} = {round(1 / rate, 2)} UZS\n"
                     else:
                         message += f"1 {escape_html(currency)} = N/A\n"
-                try:
-                    await query.message.edit_text(message, parse_mode="HTML")
-                    logger.info("UZS exchange rates message updated successfully (edit).")
-                except TelegramError as e:
-                    logger.error(f"Failed to edit UZS exchange rates message: {e}")
-                    await query.message.reply_text(message, parse_mode="HTML")
-                    logger.info("UZS exchange rates message sent as a new message (fallback).")
+                await query.message.reply_text(message, parse_mode="HTML")
+                logger.info("UZS exchange rates message sent as a new message.")
             else:
                 error_message = "❌ Error: Unable to fetch currency rates."
-                try:
-                    await query.message.edit_text(error_message, parse_mode='HTML')
-                    logger.info("UZS exchange rates error message updated successfully (edit).")
-                except TelegramError as e:
-                    logger.error(f"Failed to edit UZS exchange rates error message: {e}")
-                    await query.message.reply_text(error_message, parse_mode='HTML')
-                    logger.info("UZS exchange rates error message sent as a new message (fallback).")
+                await query.message.reply_text(error_message, parse_mode='HTML')
+                logger.info("UZS exchange rates error message sent as a new message.")
             await show_main_menu(update, context)
 
         elif callback_data == "market_sp500":
@@ -533,13 +499,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("sp500")
             logger.info(f"S&P 500 data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            try:
-                await query.message.edit_text(new_message, parse_mode='HTML')
-                logger.info("S&P 500 message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit S&P 500 message: {e}")
-                await query.message.reply_text(new_message, parse_mode='HTML')
-                logger.info("S&P 500 message sent as a new message (fallback).")
+            await query.message.reply_text(new_message, parse_mode='HTML')
+            logger.info("S&P 500 message sent as a new message.")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_crypto":
@@ -547,13 +508,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("crypto")
             logger.info(f"Crypto Market data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            try:
-                await query.message.edit_text(new_message, parse_mode='HTML')
-                logger.info("Crypto Market message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit Crypto Market message: {e}")
-                await query.message.reply_text(new_message, parse_mode='HTML')
-                logger.info("Crypto Market message sent as a new message (fallback).")
+            await query.message.reply_text(new_message, parse_mode='HTML')
+            logger.info("Crypto Market message sent as a new message.")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_commodity":
@@ -562,23 +518,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 data = await asyncio.wait_for(fetch_market_data("commodity"), timeout=30)
                 logger.info(f"Commodity Market data fetched: {data}")
                 new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-                try:
-                    await query.message.edit_text(new_message, parse_mode='HTML')
-                    logger.info("Commodity Market message updated successfully (edit).")
-                except TelegramError as e:
-                    logger.error(f"Failed to edit Commodity Market message: {e}")
-                    await query.message.reply_text(new_message, parse_mode='HTML')
-                    logger.info("Commodity Market message sent as a new message (fallback).")
+                await query.message.reply_text(new_message, parse_mode='HTML')
+                logger.info("Commodity Market message sent as a new message.")
             except asyncio.TimeoutError:
                 logger.error("Fetching commodity prices timed out after 30 seconds.")
                 error_message = "❌ Fetching commodity prices timed out. Please try again later."
-                try:
-                    await query.message.edit_text(error_message, parse_mode='HTML')
-                    logger.info("Commodity Market timeout message updated successfully (edit).")
-                except TelegramError as e:
-                    logger.error(f"Failed to edit Commodity Market timeout message: {e}")
-                    await query.message.reply_text(error_message, parse_mode='HTML')
-                    logger.info("Commodity Market timeout message sent as a new message (fallback).")
+                await query.message.reply_text(error_message, parse_mode='HTML')
+                logger.info("Commodity Market timeout message sent as a new message.")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "market_currency":
@@ -586,13 +532,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = await fetch_market_data("currency")
             logger.info(f"Currency Market data fetched: {data}")
             new_message = f"{data}\n⚡ Real-time data updates automatically using API!"
-            try:
-                await query.message.edit_text(new_message, parse_mode='HTML')
-                logger.info("Currency Market message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit Currency Market message: {e}")
-                await query.message.reply_text(new_message, parse_mode='HTML')
-                logger.info("Currency Market message sent as a new message (fallback).")
+            await query.message.reply_text(new_message, parse_mode='HTML')
+            logger.info("Currency Market message sent as a new message.")
             await show_market_prices_menu(update, context)
 
         elif callback_data == "back_to_main":
@@ -601,17 +542,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.warning(f"Unknown callback data received: {callback_data} from user {update.effective_user.id}")
             error_message = "❌ Unknown command. Please try again."
-            try:
-                await query.message.edit_text(error_message, parse_mode='HTML')
-                logger.info("Unknown command message updated successfully (edit).")
-            except TelegramError as e:
-                logger.error(f"Failed to edit unknown command message: {e}")
-                await query.message.reply_text(error_message, parse_mode='HTML')
-                logger.info("Unknown command message sent as a new message (fallback).")
+            await query.message.reply_text(error_message, parse_mode='HTML')
+            logger.info("Unknown command message sent as a new message.")
+            await show_main_menu(update, context)
 
     except TelegramError as e:
         logger.error(f"Telegram error while handling callback: {e}")
         await query.message.reply_text("❌ An error occurred while handling the callback. Please try again.", parse_mode='HTML')
+        await show_main_menu(update, context)
 
 # Handler for unexpected text messages
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -626,7 +564,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error("Conflict error detected. This usually means multiple bot instances are running or a webhook is set.")
         if update and update.effective_message:
             await update.effective_message.reply_text("❌ A conflict occurred. The bot may be running elsewhere. Please try again later.", parse_mode='HTML')
-        raise context.error  # Re-raise to stop the bot and allow a clean restart
+        logger.info("Exiting the bot due to Conflict error.")
+        os._exit(1)  # Exit the application cleanly
     elif isinstance(context.error, NetworkError):
         logger.error("Network error occurred. This might be a temporary issue with Telegram's servers.")
         if update and update.effective_message:
@@ -648,13 +587,30 @@ def main():
     # Add an error handler
     application.add_error_handler(error_handler)
 
-    # Delete any existing webhook to ensure polling works
-    try:
-        application.bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Deleted any existing webhook to ensure polling works.")
-    except TelegramError as e:
-        logger.error(f"Failed to delete webhook: {e}")
-        exit(1)
+    # Check and delete any existing webhook to ensure polling works
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Check current webhook status
+            webhook_info = application.bot.get_webhook_info()
+            logger.info(f"Current webhook info: {webhook_info}")
+            if webhook_info.url:
+                logger.info(f"Webhook is set to {webhook_info.url}. Deleting webhook...")
+                application.bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Webhook deleted successfully.")
+                # Verify webhook deletion
+                webhook_info = application.bot.get_webhook_info()
+                logger.info(f"Webhook info after deletion: {webhook_info}")
+                if webhook_info.url:
+                    logger.error("Webhook still exists after deletion attempt.")
+                    continue
+            break
+        except TelegramError as e:
+            logger.error(f"Failed to delete webhook (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                logger.critical("Failed to delete webhook after maximum retries. Exiting.")
+                exit(1)
+            time.sleep(2)  # Wait before retrying
 
     # Add conversation handler for currency conversion
     conv_handler = ConversationHandler(
